@@ -1352,7 +1352,11 @@ class IMFITS(object):
             clb.set_label("Intensity (%s %s)"%(fluxunitlabel, saunitlabel))
         return clb
 
-    def contour(self, cmul=None, relative=True,
+    def contour(self, 
+                fluxunit="Jy",
+                saunit="pixel",
+                restore=False,
+                cmul=None, relative=True,
                 levels=None,
                 colors="white", ls="-",
                 istokes=0, ifreq=0,
@@ -1361,6 +1365,15 @@ class IMFITS(object):
         plot contours of the image
 
         Args:
+          fluxunit (string):
+            Unit for the flux desity (Jy, mJy, uJy, K, si, cgs)
+          saunit (string):
+            Angular Unit for the solid angle (pixel, uas, mas, asec or arcsec,
+            amin or arcmin, degree, beam). If restore is True, saunit will be
+            forced to be "beam".
+          restore (boolean, default=False):
+            If True, the image will be blurred by a Gaussian specified with
+            beam parameters in the header.
           istokes (integer):
             index for Stokes Parameter at which the image will be plotted
           ifreq (integer):
@@ -1377,12 +1390,31 @@ class IMFITS(object):
         # Get Image Axis
         angunit = self.angunit
         imextent = self.get_imextent(angunit)
+        
+        if fluxunit.lower()=="k":
+            saunit="pixel"
+
+        if restore:
+            saunit="beam"
+
+        fluxconv = self.get_bconv(fluxunit=fluxunit, saunit="pixel")
+        saconv = self.get_bconv(fluxunit="Jy", saunit=saunit)
 
         # Get image
-        image = self.data[istokes, ifreq]
+        if restore:
+            imarr = self.convolve_gauss(
+                majsize=self.header["bmaj"],
+                minsize=self.header["bmin"],
+                pa=self.header["bpa"],
+                angunit="deg"
+            )
+            imarr = imarr.get_imarray()[istokes,ifreq] * fluxconv * saconv
+        else:
+            imarr = self.get_imarray()[istokes,ifreq] * fluxconv * saconv
+        image = imarr
 
         if cmul is None:
-            vmin = self.peak() * 0.01
+            vmin = imarr.max() * 0.01
         else:
             if relative:
                 vmin = cmul * np.abs(image).max()
